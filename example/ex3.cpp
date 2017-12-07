@@ -14,9 +14,12 @@ using std::endl;
 
 int main() {
     double START,END;
-    anchor A("../dataset/nips_lr.csv");
+    anchor A("../dataset/nips_full.bin");
+    A.Rectification_Full();
+    mat C = A.C();
+    C.save("rect.csv",arma::csv_ascii);
+    /*	
     A.CalculateColSum();
-    A.CalculateR();
     A.FindAnchor();
     arma::uvec S = A.Anchor();
     cout << S << endl;
@@ -25,4 +28,5 @@ int main() {
     END = omp_get_wtime();
     cout << "ADMM takes " << END-START << " [s]" << endl;
     A.FindA();
+    */
 }

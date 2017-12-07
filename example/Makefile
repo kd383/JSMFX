@@ -1,21 +1,16 @@
 include ../make.inc
 
-SRCS = ex1.cpp ex2.cpp
+SRCS = $(wildcard *.cpp)
 
-DEPS = ${SRCS:.cpp=.d}
 EXES = ${SRCS:.cpp=}
 
 .PHONY: all
-all:	ex1 ex2
+all:	$(EXES)
 
-ex1: ex1.cpp
+%: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDE) $(LIBS) -o $@ $<
-
-ex2: ex2.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDE) $(LIBS) -o $@ $<
-
 
 .PHONY: clean
 
 clean:
-	rm -f $(EXES)
+	rm -f $(EXES) *.csv

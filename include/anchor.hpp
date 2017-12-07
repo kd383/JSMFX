@@ -5,6 +5,7 @@
 #include <vector>
 #include "lapack.hpp"
 #include "nnls.hpp"
+#include "rect.hpp"
 
 using std::string;
 using arma::mat;
@@ -16,27 +17,41 @@ using arma::conv_to;
 using std::vector;
 
 const float GAMMA = 3.0;
+const int RECT_T = 50;
 
 class anchor{
     private:
+
     int n_, k_;
+    bool isLowRank_;
+
+    // Low rank variable
     mat X_;
     mat R_;
-    colvec colSum_;
     mat RXbar_;
+
+    // Full rank variable
+    mat Craw_;
+    mat C_;
+    mat Cbar_;
+
+    // Anchor word output
+    colvec colSum_;
     uvec anchor_;
     mat B_;
     mat A_;
-    mat C_;
-    mat Cbar_;
-    bool isLowRank_;
 
 
     public:
-    anchor(const mat X);
-    anchor(const mat C, const int k):anchor(C) { k_ = k; }
+
+    // Initialization
+    void init(const mat C);
+    anchor(const mat C) { init(C); }
+    anchor(const mat C, const int k) { init(C); k_ = k; }
     anchor(const char* str);
-    anchor(const char* str, const int k):anchor(str) { k_ = k;}
+    anchor(const char* str, const int k): anchor(str) { k_ = k;}
+
+    // Getter
     const mat& C() const { return C_; }
     const mat& X() const { return X_; }
     const colvec& ColSum() const { return colSum_; }
@@ -44,43 +59,40 @@ class anchor{
     const uvec Anchor() const { return anchor_; }
     const mat& B() const { return B_; }
     const mat& A() const { return A_; }
+
+    // Anchor word algorithm
     void CalculateColSum();
     void CalculateR();
     void FindAnchor();
     void FindB();
     void FindA();
+
+    // Rectification
+    void Rectification_Full();
+    void Rectification_LowRank();
+    void CalculateX();
 };
 
-anchor::anchor(const mat X)
+void anchor::init(const mat C)
 {
-    if ( X.n_rows == X.n_cols) {
-        C_ = mat(X);
-        n_ = X.n_rows;
+    if ( C.n_rows == C.n_cols) {
+        C_ = mat(C);
+        n_ = C.n_rows;
         k_ = 20;
         isLowRank_ = false;
     } else {
-        X_ = mat(X);
-        n_ = X.n_rows;
-        k_ = X.n_cols;
+        X_ = mat(C);
+        n_ = C.n_rows;
+        k_ = C.n_cols;
         isLowRank_ = true;
     }
 }
 
 anchor::anchor(const char* str)
 {
-    mat X;
-    X.load(str);
-    if ( X.n_rows == X.n_cols) {
-        C_ = mat(X);
-        n_ = X.n_rows;
-        k_ = 20;
-        isLowRank_ = false;
-    } else {
-        X_ = mat(X);
-        n_ = X.n_rows;
-        k_ = X.n_cols;
-        isLowRank_ = true;
-    }
+    mat C;
+    C.load(str);
+    init(C);
 }
 
 void anchor::CalculateColSum()
@@ -146,7 +158,7 @@ void anchor::FindB()
             B(ind[i],i) = 1;
         else {
             f = GAMMA*HtH.col(i);
-            B.col(i) = ADMM_DR(F, f, y0.col(i));
+            B.col(i) = ADMM_DR(F, f, ProjectToSimplex(y0.col(i)));
         }
     }
     arma::rowvec denom = (B*colSum_).t();
@@ -170,5 +182,43 @@ void anchor::FindA()
     A_.each_row() /= denom.t();
 
    return;
+}
+
+void anchor::Rectification_Full()
+{
+    Craw_ = C_;
+    for (int i = 0; i < RECT_T; i++) {
+        nearestPSD(C_, k_);
+        nearestJS(C_, n_);
+        nearestNN(C_);
+    }
+    C_ /= arma::accu(C_);
+}
+
+void anchor::Rectification_LowRank()
+{
+    vec e;
+    mat V;
+    eigs(C_, k_, e, V);
+    X_ = V*arma::diagmat(arma::sqrt(e));
+    for (int i = 0; i < RECT_T; i++) {
+        RectOp op(&X_, n_);
+        eigs(op, k_, e, V); 
+        X_ = V*arma::diagmat(arma::sqrt(e));
+    }
+    
+    X_ /= arma::norm(arma::sum(X_),"fro");
+    isLowRank_ = true;
+}
+
+void anchor::CalculateX()
+{
+    if (Craw_.is_empty())
+        ProjGradDescent(C_, k_, X_);
+    else
+        ProjGradDescent(Craw_, k_, X_);
+    X_ /= arma::norm(arma::sum(X_),"fro");
+
+    isLowRank_ = true;
 }
 #endif
